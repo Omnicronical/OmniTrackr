@@ -56,6 +56,49 @@ try {
     // Set appropriate HTTP status code
     if ($result['success']) {
         http_response_code(201);
+        
+        // Auto-login after registration
+        $loginResult = $authController->login([
+            'username' => $data['username'],
+            'password' => $data['password']
+        ]);
+        
+        if ($loginResult['success']) {
+            // Set session cookie
+            if (isset($loginResult['data']['session_id'])) {
+                $session_lifetime = getenv('SESSION_LIFETIME') ?: 86400;
+                setcookie(
+                    'session_id',
+                    $loginResult['data']['session_id'],
+                    time() + $session_lifetime,
+                    '/',
+                    '',
+                    false, // Set to true in production with HTTPS
+                    true   // httpOnly
+                );
+                
+                // Start PHP session
+                if (session_status() === PHP_SESSION_NONE) {
+                    session_start();
+                }
+                $_SESSION['user_id'] = $loginResult['data']['user_id'];
+                $_SESSION['session_id'] = $loginResult['data']['session_id'];
+            }
+            
+            // Return combined result
+            echo json_encode([
+                'success' => true,
+                'session_id' => $loginResult['data']['session_id'],
+                'user' => [
+                    'id' => $loginResult['data']['user_id'],
+                    'username' => $loginResult['data']['username'],
+                    'email' => $loginResult['data']['email']
+                ]
+            ]);
+        } else {
+            // Registration succeeded but login failed
+            echo json_encode($result);
+        }
     } else {
         if (isset($result['error']['code'])) {
             switch ($result['error']['code']) {
@@ -70,9 +113,8 @@ try {
         } else {
             http_response_code(500);
         }
+        echo json_encode($result);
     }
-
-    echo json_encode($result);
 
 } catch (Exception $e) {
     http_response_code(500);

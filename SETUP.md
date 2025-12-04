@@ -18,7 +18,8 @@
 
 3. **Web Server**
    - Apache 2.4+ (recommended) or
-   - Nginx 1.18+
+   - Nginx 1.18+ or
+   - PHP Built-in Server (development only)
 
 ## Installation Steps
 
@@ -117,6 +118,22 @@ SESSION_SECRET=your_random_secret_key_here
 ```
 
 ### 5. Configure Web Server
+
+#### PHP Built-in Server (Development Only)
+
+For local development, you can use PHP's built-in server:
+
+```bash
+# From the project root directory
+php -S localhost:8000 -t public public/router.php
+```
+
+**Important Notes:**
+- The `router.php` file is required for proper API routing with PHP's built-in server
+- `.htaccess` files are ignored by PHP's built-in server (Apache only)
+- The router handles routing `/api/*` requests to the correct PHP files
+- Access the app at: `http://localhost:8000`
+- **Never use the built-in server in production** - it's single-threaded and not secure
 
 #### Apache Configuration
 

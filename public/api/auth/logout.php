@@ -33,18 +33,17 @@ require_once __DIR__ . '/../../../src/config/database.php';
 require_once __DIR__ . '/../../../src/controllers/AuthController.php';
 
 try {
-    // Get session ID from cookie or header
-    $session_id = null;
-    
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) {
-        $auth_header = $headers['Authorization'];
-        if (preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
-            $session_id = $matches[1];
-        }
+    // Start PHP session
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
     }
     
-    if (!$session_id && isset($_COOKIE['session_id'])) {
+    // Get session ID from PHP session or cookie
+    $session_id = null;
+    
+    if (isset($_SESSION['session_id'])) {
+        $session_id = $_SESSION['session_id'];
+    } elseif (isset($_COOKIE['session_id'])) {
         $session_id = $_COOKIE['session_id'];
     }
 
@@ -58,6 +57,10 @@ try {
         
         // Clear session cookie
         setcookie('session_id', '', time() - 3600, '/');
+        
+        // Destroy PHP session
+        session_unset();
+        session_destroy();
     } else {
         if (isset($result['error']['code'])) {
             switch ($result['error']['code']) {

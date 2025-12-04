@@ -50,8 +50,124 @@ if ($uri === '' || $uri === 'index.php') {
 </head>
 <body>
     <div id="app">
-        <h1>OmniTrackr</h1>
-        <p>Activity tracking application - Setup complete!</p>
+        <!-- Navigation -->
+        <nav id="main-nav" class="hidden">
+            <div class="nav-container">
+                <h1 class="nav-logo">OmniTrackr</h1>
+                <div class="nav-actions">
+                    <span id="user-display" class="user-display"></span>
+                    <button id="logout-btn" class="btn btn-secondary">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Authentication Container -->
+        <div id="auth-container" class="auth-container">
+            <div class="auth-card">
+                <h1 class="auth-title">OmniTrackr</h1>
+                <p class="auth-subtitle">Track your activities with ease</p>
+
+                <!-- Login Form -->
+                <form id="login-form" class="auth-form">
+                    <h2>Login</h2>
+                    <div class="form-group">
+                        <label for="login-username">Username</label>
+                        <input 
+                            type="text" 
+                            id="login-username" 
+                            name="username" 
+                            required 
+                            autocomplete="username"
+                            class="form-input"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input 
+                            type="password" 
+                            id="login-password" 
+                            name="password" 
+                            required 
+                            autocomplete="current-password"
+                            class="form-input"
+                        >
+                    </div>
+                    <div id="login-error" class="error-message hidden"></div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <p class="auth-switch">
+                        Don\'t have an account? 
+                        <a href="#" id="show-register">Register here</a>
+                    </p>
+                </form>
+
+                <!-- Registration Form -->
+                <form id="register-form" class="auth-form hidden">
+                    <h2>Register</h2>
+                    <div class="form-group">
+                        <label for="register-username">Username</label>
+                        <input 
+                            type="text" 
+                            id="register-username" 
+                            name="username" 
+                            required 
+                            autocomplete="username"
+                            class="form-input"
+                            minlength="3"
+                        >
+                        <small class="form-hint">At least 3 characters</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-email">Email</label>
+                        <input 
+                            type="email" 
+                            id="register-email" 
+                            name="email" 
+                            required 
+                            autocomplete="email"
+                            class="form-input"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Password</label>
+                        <input 
+                            type="password" 
+                            id="register-password" 
+                            name="password" 
+                            required 
+                            autocomplete="new-password"
+                            class="form-input"
+                            minlength="6"
+                        >
+                        <small class="form-hint">At least 6 characters</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password-confirm">Confirm Password</label>
+                        <input 
+                            type="password" 
+                            id="register-password-confirm" 
+                            name="password_confirm" 
+                            required 
+                            autocomplete="new-password"
+                            class="form-input"
+                        >
+                    </div>
+                    <div id="register-error" class="error-message hidden"></div>
+                    <button type="submit" class="btn btn-primary">Register</button>
+                    <p class="auth-switch">
+                        Already have an account? 
+                        <a href="#" id="show-login">Login here</a>
+                    </p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main Application Container (hidden until authenticated) -->
+        <div id="main-container" class="main-container hidden">
+            <div class="dashboard">
+                <h2>Welcome to OmniTrackr</h2>
+                <p>Your activity tracking dashboard will appear here.</p>
+            </div>
+        </div>
     </div>
     <script src="/js/app.js"></script>
 </body>

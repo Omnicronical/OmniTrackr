@@ -249,7 +249,12 @@
 
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. Build frontend authentication UI
+- [x] 10. Build frontend authentication UI
+
+
+
+
+
   - Create registration form with validation
   - Create login form with validation
   - Implement session management in frontend

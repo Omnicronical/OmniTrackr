@@ -69,7 +69,25 @@ try {
                 false, // Set to true in production with HTTPS
                 true   // httpOnly
             );
+            
+            // Start PHP session
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            $_SESSION['user_id'] = $result['data']['user_id'];
+            $_SESSION['session_id'] = $result['data']['session_id'];
         }
+        
+        // Return formatted response
+        echo json_encode([
+            'success' => true,
+            'session_id' => $result['data']['session_id'],
+            'user' => [
+                'id' => $result['data']['user_id'],
+                'username' => $result['data']['username'],
+                'email' => $result['data']['email']
+            ]
+        ]);
     } else {
         if (isset($result['error']['code'])) {
             switch ($result['error']['code']) {
@@ -83,9 +101,8 @@ try {
         } else {
             http_response_code(500);
         }
+        echo json_encode($result);
     }
-
-    echo json_encode($result);
 
 } catch (Exception $e) {
     http_response_code(500);

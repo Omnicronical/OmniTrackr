@@ -292,9 +292,20 @@ php tests/Property_10_UserActivityIsolation_Test.php
 - Fix permissions: `sudo chown -R www-data:www-data /var/www/omnitrackr`
 
 ### API Returns 404
+
+**Using PHP Built-in Server:**
+- Make sure you're using the router: `php -S localhost:8000 -t public public/router.php`
+- The router.php file must exist in the public/ directory
+- Restart the server after any changes
+
+**Using Apache:**
 - Check .htaccess file exists in public/
 - Enable mod_rewrite: `sudo a2enmod rewrite`
 - Restart Apache: `sudo systemctl restart apache2`
+
+**Using Nginx:**
+- Check the try_files directive in your server block
+- Restart Nginx: `sudo systemctl restart nginx`
 
 ## Next Steps
 

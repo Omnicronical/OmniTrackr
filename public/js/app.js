@@ -5,12 +5,16 @@
 // Application state
 const AppState = {
     currentUser: null,
-    isAuthenticated: false
+    isAuthenticated: false,
+    prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
 };
 
 // Application initialization
 document.addEventListener('DOMContentLoaded', function() {
     console.log('OmniTrackr initialized');
+    
+    // Initialize accessibility features
+    initAccessibility();
     
     // Initialize authentication
     initAuth();
@@ -18,6 +22,64 @@ document.addEventListener('DOMContentLoaded', function() {
     // Test API health endpoint
     testAPIConnection();
 });
+
+/**
+ * Initialize accessibility features
+ */
+function initAccessibility() {
+    // Listen for reduced motion preference changes
+    const motionMediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    motionMediaQuery.addEventListener('change', (e) => {
+        AppState.prefersReducedMotion = e.matches;
+        console.log('Reduced motion preference changed:', e.matches);
+    });
+    
+    // Add keyboard navigation support for cards
+    document.addEventListener('keydown', handleGlobalKeyboard);
+    
+    // Announce page changes to screen readers
+    createLiveRegion();
+}
+
+/**
+ * Create ARIA live region for announcements
+ */
+function createLiveRegion() {
+    const liveRegion = document.createElement('div');
+    liveRegion.id = 'aria-live-region';
+    liveRegion.setAttribute('aria-live', 'polite');
+    liveRegion.setAttribute('aria-atomic', 'true');
+    liveRegion.className = 'sr-only';
+    document.body.appendChild(liveRegion);
+}
+
+/**
+ * Announce message to screen readers
+ */
+function announceToScreenReader(message) {
+    const liveRegion = document.getElementById('aria-live-region');
+    if (liveRegion) {
+        liveRegion.textContent = message;
+        // Clear after announcement
+        setTimeout(() => {
+            liveRegion.textContent = '';
+        }, 1000);
+    }
+}
+
+/**
+ * Handle global keyboard navigation
+ */
+function handleGlobalKeyboard(e) {
+    // Handle Escape key globally
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('activity-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            closeActivityModal();
+            e.preventDefault();
+        }
+    }
+}
 
 /**
  * Initialize authentication system
@@ -339,7 +401,7 @@ async function testAPIConnection() {
         const data = await response.json();
         
         if (data.success) {
-            console.log('✓ API connection successful');
+            console.log('API connection successful');
             console.log('Database status:', data.message);
         } else {
             console.error('✗ API connection failed:', data.error);
@@ -435,6 +497,7 @@ function initDashboard() {
 function setupDashboardEventListeners() {
     // View tabs
     document.getElementById('tab-activities').addEventListener('click', () => switchView('activities'));
+    document.getElementById('tab-stats').addEventListener('click', () => switchView('stats'));
     document.getElementById('tab-manage').addEventListener('click', () => switchView('manage'));
     
     // Add activity button
@@ -548,15 +611,19 @@ function createFilterCheckbox(item, type) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.value = item.id;
+    checkbox.id = `filter-${type}-${item.id}`;
+    checkbox.setAttribute('aria-label', `Filter by ${type} ${item.name}`);
     checkbox.addEventListener('change', (e) => {
         handleFilterChange(item.id, type, e.target.checked);
     });
     
     const span = document.createElement('span');
     span.textContent = item.name;
+    span.id = `filter-${type}-${item.id}-label`;
     
     label.appendChild(checkbox);
     label.appendChild(span);
+    label.setAttribute('for', checkbox.id);
     
     return label;
 }
@@ -584,6 +651,9 @@ function handleFilterChange(id, type, checked) {
         }
     }
     
+    // Update filter count badge
+    updateFilterCount();
+    
     // Re-render activities with filters
     renderActivities();
 }
@@ -601,8 +671,26 @@ function clearAllFilters() {
         cb.closest('.filter-checkbox').classList.remove('active');
     });
     
+    // Update filter count badge
+    updateFilterCount();
+    
     // Re-render activities
     renderActivities();
+}
+
+/**
+ * Update filter count badge
+ */
+function updateFilterCount() {
+    const totalFilters = DashboardState.selectedCategories.size + DashboardState.selectedTags.size;
+    const filterCountEl = document.getElementById('filter-count');
+    
+    if (totalFilters > 0) {
+        filterCountEl.textContent = totalFilters;
+        filterCountEl.classList.remove('hidden');
+    } else {
+        filterCountEl.classList.add('hidden');
+    }
 }
 
 /**
@@ -612,24 +700,53 @@ function renderActivities() {
     const grid = document.getElementById('activities-grid');
     const emptyState = document.getElementById('empty-state');
     
-    // Filter activities
-    const filteredActivities = filterActivities(DashboardState.activities);
+    // Respect reduced motion preference
+    const transitionDuration = AppState.prefersReducedMotion ? 0 : 150;
     
-    if (filteredActivities.length === 0) {
-        grid.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
+    // Add fade-out effect before re-rendering
+    if (!AppState.prefersReducedMotion) {
+        grid.style.opacity = '0';
+        grid.style.transform = 'translateY(10px)';
+        grid.style.transition = 'opacity 150ms ease-out, transform 150ms ease-out';
     }
     
-    emptyState.classList.add('hidden');
-    grid.innerHTML = '';
-    
-    // Render each activity card with stagger animation
-    filteredActivities.forEach((activity, index) => {
-        const card = createActivityCard(activity);
-        card.style.animationDelay = `${index * 50}ms`;
-        grid.appendChild(card);
-    });
+    // Use setTimeout to allow the fade-out to be visible
+    setTimeout(() => {
+        // Filter activities
+        const filteredActivities = filterActivities(DashboardState.activities);
+        
+        if (filteredActivities.length === 0) {
+            grid.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            grid.setAttribute('aria-label', 'No activities to display');
+            announceToScreenReader('No activities match the current filters');
+            grid.style.opacity = '1';
+            grid.style.transform = 'translateY(0)';
+            return;
+        }
+        
+        emptyState.classList.add('hidden');
+        grid.innerHTML = '';
+        grid.setAttribute('aria-label', `Showing ${filteredActivities.length} activities`);
+        
+        // Announce to screen readers
+        announceToScreenReader(`Showing ${filteredActivities.length} ${filteredActivities.length === 1 ? 'activity' : 'activities'}`);
+        
+        // Render each activity card with stagger animation
+        filteredActivities.forEach((activity, index) => {
+            const card = createActivityCard(activity);
+            // Stagger animation with 60ms delay between cards (max 500ms total for ~8 cards)
+            // Disable stagger if reduced motion is preferred
+            if (!AppState.prefersReducedMotion) {
+                card.style.animationDelay = `${Math.min(index * 60, 500)}ms`;
+            }
+            grid.appendChild(card);
+        });
+        
+        // Fade in the grid
+        grid.style.opacity = '1';
+        grid.style.transform = 'translateY(0)';
+    }, transitionDuration);
 }
 
 /**
@@ -664,6 +781,17 @@ function createActivityCard(activity) {
     const card = document.createElement('div');
     card.className = 'activity-card';
     card.dataset.activityId = activity.id;
+    card.setAttribute('role', 'article');
+    card.setAttribute('aria-label', `Activity: ${activity.title}`);
+    card.setAttribute('tabindex', '0');
+    
+    // Add keyboard support for card
+    card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openActivityModal(activity);
+        }
+    });
     
     // Card header
     const header = document.createElement('div');
@@ -692,7 +820,7 @@ function createActivityCard(activity) {
     if (activity.category_name) {
         const category = document.createElement('div');
         category.className = 'activity-card-category';
-        category.innerHTML = `<span>📁</span> ${activity.category_name}`;
+        category.innerHTML = `<span class="icon">▪</span> ${activity.category_name}`;
         meta.appendChild(category);
     }
     
@@ -719,8 +847,9 @@ function createActivityCard(activity) {
     
     const editBtn = document.createElement('button');
     editBtn.className = 'btn-icon-only btn-edit';
-    editBtn.innerHTML = '✏️';
+    editBtn.innerHTML = '✎';
     editBtn.title = 'Edit activity';
+    editBtn.setAttribute('aria-label', `Edit ${activity.title}`);
     editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openActivityModal(activity);
@@ -728,8 +857,9 @@ function createActivityCard(activity) {
     
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon-only btn-delete';
-    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.innerHTML = '×';
     deleteBtn.title = 'Delete activity';
+    deleteBtn.setAttribute('aria-label', `Delete ${activity.title}`);
     deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         handleDeleteActivity(activity);
@@ -779,13 +909,19 @@ function openActivityModal(activity = null) {
         });
         
         DashboardState.currentActivity = activity;
+        announceToScreenReader(`Editing activity: ${activity.title}`);
     } else {
         // Create mode
         modalTitle.textContent = 'Add Activity';
         DashboardState.currentActivity = null;
+        announceToScreenReader('Add new activity dialog opened');
     }
     
     modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    
+    // Trap focus in modal
+    trapFocusInModal(modal);
     
     // Focus title field after animation starts
     setTimeout(() => {
@@ -799,16 +935,67 @@ function openActivityModal(activity = null) {
 function closeActivityModal() {
     const modal = document.getElementById('activity-modal');
     const modalContent = modal.querySelector('.modal-content');
+    const modalOverlay = modal.querySelector('.modal-overlay');
     
-    // Add fade-out animation
-    modalContent.style.animation = 'scaleOut var(--timing-medium) var(--ease-in)';
+    // Respect reduced motion preference
+    const animationDuration = AppState.prefersReducedMotion ? 0 : 300;
+    
+    // Add fade-out animations
+    if (!AppState.prefersReducedMotion) {
+        modalContent.style.animation = 'scaleOut var(--timing-medium) var(--ease-in)';
+        modalOverlay.style.animation = 'fadeOut var(--timing-medium) var(--ease-in)';
+    }
+    
+    announceToScreenReader('Dialog closed');
     
     // Hide modal after animation completes
     setTimeout(() => {
         modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
         modalContent.style.animation = '';
+        modalOverlay.style.animation = '';
         DashboardState.currentActivity = null;
-    }, 300);
+        
+        // Return focus to the button that opened the modal
+        const addButton = document.getElementById('add-activity-btn');
+        if (addButton) {
+            addButton.focus();
+        }
+    }, animationDuration);
+}
+
+/**
+ * Trap focus within modal for accessibility
+ */
+function trapFocusInModal(modal) {
+    const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstFocusable = focusableElements[0];
+    const lastFocusable = focusableElements[focusableElements.length - 1];
+    
+    const handleTabKey = (e) => {
+        if (e.key !== 'Tab') return;
+        
+        if (e.shiftKey) {
+            // Shift + Tab
+            if (document.activeElement === firstFocusable) {
+                e.preventDefault();
+                lastFocusable.focus();
+            }
+        } else {
+            // Tab
+            if (document.activeElement === lastFocusable) {
+                e.preventDefault();
+                firstFocusable.focus();
+            }
+        }
+    };
+    
+    // Remove any existing listener
+    modal.removeEventListener('keydown', handleTabKey);
+    // Add new listener
+    modal.addEventListener('keydown', handleTabKey);
 }
 
 /**
@@ -997,14 +1184,34 @@ function switchView(viewName) {
     // Update tab buttons
     document.querySelectorAll('.tab-button').forEach(btn => {
         btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
     });
-    document.querySelector(`[data-view="${viewName}"]`).classList.add('active');
+    const activeTab = document.querySelector(`[data-view="${viewName}"]`);
+    activeTab.classList.add('active');
+    activeTab.setAttribute('aria-selected', 'true');
     
     // Update view content
     document.querySelectorAll('.view-content').forEach(view => {
         view.classList.remove('active');
+        view.setAttribute('aria-hidden', 'true');
     });
-    document.getElementById(`view-${viewName}`).classList.add('active');
+    const activeView = document.getElementById(`view-${viewName}`);
+    activeView.classList.add('active');
+    activeView.setAttribute('aria-hidden', 'false');
+    
+    // Announce view change to screen readers
+    const viewNames = {
+        'activities': 'Activities',
+        'stats': 'Statistics',
+        'manage': 'Manage Categories and Tags'
+    };
+    announceToScreenReader(`Switched to ${viewNames[viewName]} view`);
+    
+    // Smooth scroll to top of content (respect reduced motion)
+    window.scrollTo({
+        top: 0,
+        behavior: AppState.prefersReducedMotion ? 'auto' : 'smooth'
+    });
     
     // Load management data if switching to manage view
     if (viewName === 'manage') {
@@ -1044,7 +1251,8 @@ function renderCategoriesList() {
     
     DashboardState.categories.forEach((category, index) => {
         const item = createManagementItem(category, 'category');
-        item.style.animationDelay = `${index * 50}ms`;
+        // Stagger animation with 60ms delay between items
+        item.style.animationDelay = `${index * 60}ms`;
         container.appendChild(item);
     });
 }
@@ -1064,7 +1272,7 @@ function renderTagsList() {
     
     if (DashboardState.tags.length === 0) {
         container.innerHTML = '';
-        emptyState.classList.remove('hidden');
+        emptyState.classList.add('hidden');
         return;
     }
     
@@ -1073,7 +1281,8 @@ function renderTagsList() {
     
     DashboardState.tags.forEach((tag, index) => {
         const item = createManagementItem(tag, 'tag');
-        item.style.animationDelay = `${index * 50}ms`;
+        // Stagger animation with 60ms delay between items
+        item.style.animationDelay = `${index * 60}ms`;
         container.appendChild(item);
     });
 }
@@ -1102,13 +1311,13 @@ function createManagementItem(item, type) {
     
     const editBtn = document.createElement('button');
     editBtn.className = 'btn-icon-only';
-    editBtn.innerHTML = '✏️';
+    editBtn.innerHTML = '✎';
     editBtn.title = `Edit ${type}`;
     editBtn.addEventListener('click', () => enableInlineEdit(div, item, type));
     
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon-only btn-delete';
-    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.innerHTML = '×';
     deleteBtn.title = `Delete ${type}`;
     deleteBtn.addEventListener('click', () => handleDeleteEntity(item, type));
     
@@ -1235,13 +1444,13 @@ function enableInlineEdit(itemElement, item, type) {
     
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn-icon-only';
-    saveBtn.innerHTML = '✅';
+    saveBtn.innerHTML = '✓';
     saveBtn.title = 'Save';
     saveBtn.addEventListener('click', () => handleUpdateEntity(item.id, input.value.trim(), type, itemElement, originalName));
     
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn-icon-only';
-    cancelBtn.innerHTML = '❌';
+    cancelBtn.innerHTML = '×';
     cancelBtn.title = 'Cancel';
     cancelBtn.addEventListener('click', () => cancelInlineEdit(itemElement, originalName));
     
@@ -1291,13 +1500,13 @@ function cancelInlineEdit(itemElement, originalName) {
     
     const editBtn = document.createElement('button');
     editBtn.className = 'btn-icon-only';
-    editBtn.innerHTML = '✏️';
+    editBtn.innerHTML = '✎';
     editBtn.title = `Edit ${type}`;
     editBtn.addEventListener('click', () => enableInlineEdit(itemElement, item, type));
     
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon-only btn-delete';
-    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.innerHTML = '×';
     deleteBtn.title = `Delete ${type}`;
     deleteBtn.addEventListener('click', () => handleDeleteEntity(item, type));
     
@@ -1364,3 +1573,432 @@ async function handleDeleteEntity(item, type) {
         alert(`An error occurred while deleting the ${type}.`);
     }
 }
+
+
+/**
+ * Statistics State
+ */
+const StatsState = {
+    overview: null,
+    categoryBreakdown: null,
+    tagDistribution: null,
+    timeline: null,
+    charts: {
+        category: null,
+        tag: null,
+        timeline: null
+    }
+};
+
+/**
+ * Initialize Statistics Dashboard
+ */
+async function initStats() {
+    console.log('Loading statistics...');
+    
+    try {
+        // Load all stats data in parallel
+        const [overviewData, categoryData, tagData, timelineData] = await Promise.all([
+            API.get('/stats/overview'),
+            API.get('/stats/by-category'),
+            API.get('/stats/by-tag'),
+            API.get('/stats/timeline?days=30')
+        ]);
+        
+        // Update state
+        StatsState.overview = overviewData.data;
+        StatsState.categoryBreakdown = categoryData.data;
+        StatsState.tagDistribution = tagData.data;
+        StatsState.timeline = timelineData.data;
+        
+        // Render stats
+        renderOverviewStats();
+        renderCategoryChart();
+        renderTagChart();
+        renderTimelineChart();
+        
+        console.log('Statistics loaded successfully');
+    } catch (error) {
+        console.error('Failed to load statistics:', error);
+    }
+}
+
+/**
+ * Render overview statistics
+ */
+function renderOverviewStats() {
+    if (!StatsState.overview) return;
+    
+    // Animate the numbers counting up
+    animateValue('stat-total-activities', 0, StatsState.overview.total_activities, 800);
+    animateValue('stat-total-categories', 0, StatsState.overview.total_categories, 800);
+    animateValue('stat-total-tags', 0, StatsState.overview.total_tags, 800);
+}
+
+/**
+ * Animate a number counting up
+ */
+function animateValue(elementId, start, end, duration) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    const range = end - start;
+    const increment = range / (duration / 16); // 60fps
+    let current = start;
+    
+    const timer = setInterval(() => {
+        current += increment;
+        if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+            current = end;
+            clearInterval(timer);
+        }
+        element.textContent = Math.floor(current);
+    }, 16);
+}
+
+/**
+ * Render category distribution chart (Donut)
+ */
+function renderCategoryChart() {
+    const canvas = document.getElementById('category-chart');
+    const emptyState = document.getElementById('category-empty');
+    
+    if (!StatsState.categoryBreakdown || StatsState.categoryBreakdown.length === 0) {
+        canvas.style.display = 'none';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+    
+    canvas.style.display = 'block';
+    emptyState.classList.add('hidden');
+    
+    // Destroy existing chart if it exists
+    if (StatsState.charts.category) {
+        StatsState.charts.category.destroy();
+    }
+    
+    // Prepare data
+    const labels = StatsState.categoryBreakdown.map(item => item.category_name);
+    const data = StatsState.categoryBreakdown.map(item => item.activity_count);
+    const colors = StatsState.categoryBreakdown.map(item => item.category_color || '#FFD700');
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    StatsState.charts.category = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: '#FFFFFF',
+                borderWidth: 2,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12,
+                            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        },
+                        color: '#333333',
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            },
+            animation: {
+                animateRotate: true,
+                animateScale: true,
+                duration: 800,
+                easing: 'easeOutQuart'
+            }
+        }
+    });
+}
+
+/**
+ * Render tag distribution chart (Bar)
+ */
+function renderTagChart() {
+    const canvas = document.getElementById('tag-chart');
+    const emptyState = document.getElementById('tag-empty');
+    
+    if (!StatsState.tagDistribution || StatsState.tagDistribution.length === 0) {
+        canvas.style.display = 'none';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+    
+    canvas.style.display = 'block';
+    emptyState.classList.add('hidden');
+    
+    // Destroy existing chart if it exists
+    if (StatsState.charts.tag) {
+        StatsState.charts.tag.destroy();
+    }
+    
+    // Prepare data
+    const labels = StatsState.tagDistribution.map(item => item.tag_name);
+    const data = StatsState.tagDistribution.map(item => item.activity_count);
+    const colors = StatsState.tagDistribution.map(item => item.tag_color || '#C0C0C0');
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    StatsState.charts.tag = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Activities',
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(color => color),
+                borderWidth: 2,
+                borderRadius: 8,
+                hoverBackgroundColor: '#FFD700'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        label: function(context) {
+                            return `Activities: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#333333',
+                        font: {
+                            size: 11
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#333333',
+                        font: {
+                            size: 11
+                        }
+                    },
+                    grid: {
+                        display: false,
+                        drawBorder: false
+                    }
+                }
+            },
+            animation: {
+                duration: 800,
+                easing: 'easeOutQuart'
+            }
+        }
+    });
+}
+
+/**
+ * Render timeline chart (Line)
+ */
+function renderTimelineChart() {
+    const canvas = document.getElementById('timeline-chart');
+    const emptyState = document.getElementById('timeline-empty');
+    
+    if (!StatsState.timeline || StatsState.timeline.length === 0) {
+        canvas.style.display = 'none';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+    
+    canvas.style.display = 'block';
+    emptyState.classList.add('hidden');
+    
+    // Destroy existing chart if it exists
+    if (StatsState.charts.timeline) {
+        StatsState.charts.timeline.destroy();
+    }
+    
+    // Prepare data - fill in missing dates
+    const dates = [];
+    const counts = [];
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    // Create a map of existing data
+    const dataMap = {};
+    StatsState.timeline.forEach(item => {
+        dataMap[item.date] = item.count;
+    });
+    
+    // Fill in all dates in the range
+    for (let d = new Date(thirtyDaysAgo); d <= today; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        dates.push(dateStr);
+        counts.push(dataMap[dateStr] || 0);
+    }
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    StatsState.charts.timeline = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Activities Created',
+                data: counts,
+                borderColor: '#FFD700',
+                backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#FFD700',
+                pointBorderColor: '#FFFFFF',
+                pointBorderWidth: 2,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: '#D4AF37',
+                pointHoverBorderWidth: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        title: function(context) {
+                            const date = new Date(context[0].label);
+                            return date.toLocaleDateString('en-US', { 
+                                weekday: 'short', 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                            });
+                        },
+                        label: function(context) {
+                            const count = context.parsed.y;
+                            return `Activities: ${count}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#333333',
+                        font: {
+                            size: 11
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#333333',
+                        font: {
+                            size: 10
+                        },
+                        maxRotation: 45,
+                        minRotation: 45,
+                        callback: function(value, index) {
+                            // Show every 5th date to avoid crowding
+                            if (index % 5 === 0) {
+                                const date = new Date(this.getLabelForValue(value));
+                                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            }
+                            return '';
+                        }
+                    },
+                    grid: {
+                        display: false,
+                        drawBorder: false
+                    }
+                }
+            },
+            animation: {
+                duration: 1000,
+                easing: 'easeOutQuart'
+            }
+        }
+    });
+}
+
+/**
+ * Update switchView to handle stats view
+ */
+const originalSwitchView = switchView;
+switchView = function(viewName) {
+    originalSwitchView(viewName);
+    
+    // Load stats when switching to stats view
+    if (viewName === 'stats') {
+        initStats();
+    }
+};

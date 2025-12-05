@@ -146,7 +146,7 @@ class ActivityController {
                 'error' => [
                     'code' => 'DATABASE_ERROR',
                     'message' => 'Database operation failed',
-                    'details' => []
+                    'details' => ['error' => $e->getMessage(), 'line' => $e->getLine(), 'file' => basename($e->getFile())]
                 ]
             ];
         }
@@ -164,11 +164,42 @@ class ActivityController {
             $activity = new Activity($this->db);
             $activities = $activity->getAllByUser($user_id, $filters);
 
-            // Enrich activities with tag information
+            // Enrich activities with tag information and category names
             foreach ($activities as &$act) {
                 $activityObj = new Activity($this->db);
                 $activityObj->id = $act['id'];
                 $act['tag_ids'] = $activityObj->getTags();
+                
+                // Get category name if category exists
+                if ($act['category_id']) {
+                    $stmt = $this->db->prepare("SELECT name FROM categories WHERE id = ?");
+                    $stmt->bind_param("i", $act['category_id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    if ($row = $result->fetch_assoc()) {
+                        $act['category_name'] = $row['name'];
+                    }
+                    $stmt->close();
+                } else {
+                    $act['category_name'] = null;
+                }
+                
+                // Get tag details with names
+                $tag_details = [];
+                foreach ($act['tag_ids'] as $tag_id) {
+                    $stmt = $this->db->prepare("SELECT id, name FROM tags WHERE id = ?");
+                    $stmt->bind_param("i", $tag_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    if ($row = $result->fetch_assoc()) {
+                        $tag_details[] = [
+                            'id' => $row['id'],
+                            'name' => $row['name']
+                        ];
+                    }
+                    $stmt->close();
+                }
+                $act['tags'] = $tag_details;
             }
 
             return [
@@ -222,6 +253,35 @@ class ActivityController {
             }
 
             $tags = $activity->getTags();
+            
+            // Get category name if category exists
+            $category_name = null;
+            if ($activity->category_id) {
+                $stmt = $this->db->prepare("SELECT name FROM categories WHERE id = ?");
+                $stmt->bind_param("i", $activity->category_id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                if ($row = $result->fetch_assoc()) {
+                    $category_name = $row['name'];
+                }
+                $stmt->close();
+            }
+            
+            // Get tag details with names
+            $tag_details = [];
+            foreach ($tags as $tag_id) {
+                $stmt = $this->db->prepare("SELECT id, name FROM tags WHERE id = ?");
+                $stmt->bind_param("i", $tag_id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                if ($row = $result->fetch_assoc()) {
+                    $tag_details[] = [
+                        'id' => $row['id'],
+                        'name' => $row['name']
+                    ];
+                }
+                $stmt->close();
+            }
 
             return [
                 'success' => true,
@@ -229,9 +289,11 @@ class ActivityController {
                     'id' => $activity->id,
                     'user_id' => $activity->user_id,
                     'category_id' => $activity->category_id,
+                    'category_name' => $category_name,
                     'title' => $activity->title,
                     'description' => $activity->description,
                     'tag_ids' => $tags,
+                    'tags' => $tag_details,
                     'created_at' => $activity->created_at,
                     'updated_at' => $activity->updated_at
                 ]
